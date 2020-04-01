@@ -4,10 +4,12 @@
 \alias{summary.em.fit}
 \title{S3 method for class "summary.em.fit"}
 \usage{
-\method{summary}{em.fit}(object)
+\method{summary}{em.fit}(object, ...)
 }
 \arguments{
-\item{object}{an object of class "em.fit", usually a result of \code{\link{em.bin}}}
+\item{object}{an object of class "em.fit", usually a result of \code{\link{em}}}
+
+\item{...}{additional arugments purposefully ignored.}
 }
 \value{
 an object of class "summary.em.fit"
