@@ -114,7 +114,7 @@ init_em_params <- function(x, .ability.prior, .prevalence.prior){
   stopifnot(all(c("y", "ii", "jj", "K", "J") %in% names(x)))
 
   stopifnot(length(.ability.prior) == length(x$K))
-  stopifnot(length(.prevalence.prior) == length(x$K))
+  stopifnot(length(.prevalence.prior) == x$K)
 
   # capture labels, item and worker IDs
   item_labels_ <- names(rev(sort(table(x$y))))
