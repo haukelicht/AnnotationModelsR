@@ -113,30 +113,22 @@ init_em_params <- function(x, .ability.prior, .prevalence.prior){
   stopifnot(is.list(x))
   stopifnot(all(c("y", "ii", "jj", "K", "J") %in% names(x)))
 
-  stopifnot(length(.ability.prior) == length(x$K))
+  stopifnot(length(.ability.prior) == 1L)
   stopifnot(length(.prevalence.prior) == x$K)
 
   # capture labels, item and worker IDs
-  item_labels_ <- names(rev(sort(table(x$y))))
+  item_labels_ <- sort(unique(x$y))
   item_ids_ <- unique(x$ii)
   worker_ids_ <- unique(x$jj)
 
   # create array with J K-by-K matrices defining annotators' confusion matrices
-  theta_hat <- with(x, array(NA, c(K, K, J)))
+  # initialize with off-diagonal error-rates
+  theta_hat <- with(x, array((1-.ability.prior)/(x$K-1), c(K, K, J)))
   dimnames(theta_hat) <- list(item_labels_, item_labels_, worker_ids_)
-
-  # set annotator accuracies for first iteration step
-  for (j in 1:x$J) {
-    theta_hat[,,j] <- (1-.ability.prior)/(x$K-1) # set off-diagonal (error-rates)
-    diag(theta_hat[,,j]) <- .ability.prior # and diagonal
-  }
+  # set on-diagonal annotator accuracies for first iteration step
+  for (j in 1:x$J) diag(theta_hat[,,j]) <- .ability.prior
   # NOTE: theta_hat[k,k',j] gives the probability that annotator j assigns the
   #       label k' to an item whose true category is k
-
-  # set initial class prevalences/probabilites
-  # pi_hat <- with(x, array(1/K, K))
-  pi_hat <- .prevalence.prior
-  dimnames(pi_hat) <- list(item_labels_)
 
   # create items-by-categories array to store estimated class probabilities of items
   E_z <- with(x, array(1/K, c(I, K)))
@@ -146,7 +138,7 @@ init_em_params <- function(x, .ability.prior, .prevalence.prior){
   return(
     list(
       theta_hat = theta_hat
-      , pi_hat = pi_hat
+      , pi_hat = .prevalence.prior
       , E_z = E_z
     )
   )
@@ -187,8 +179,7 @@ em_iterate <- function(x, p, max.iters, beta.prior, alpha.prior, min.relative.di
 
     # --- Expectation Step --- #
     # set estimated class probabilities to current estimates of category prevalences
-    for (i in 1:x$I)
-      p$E_z[i,] <- p$pi_hat
+    p$E_z <- array(rep(p$pi_hat, each = x$I), dim(p$E_z), dimnames(p$E_z))
 
     # for each annotation ...
     for (n in 1:x$N) {
@@ -201,18 +192,12 @@ em_iterate <- function(x, p, max.iters, beta.prior, alpha.prior, min.relative.di
 
     # --- Maximization Step --- #
     # add beta smoothing on pi_hat
-    nms <- dimnames(p$pi_hat)
-    p$pi_hat <- as.array(rep(beta.prior, x$K))
-    dimnames(p$pi_hat) <- nms
-    for (i in 1:x$I)
-      p$pi_hat <- p$pi_hat + p$E_z[i,]
-
+    p$pi_hat <- colSums(p$E_z) + beta.prior
     # ensure that probabilities sum to one
-    p$pi_hat <- p$pi_hat / sum(p$pi_hat)
+    p$pi_hat <- as.array(p$pi_hat / sum(p$pi_hat))
 
     # add alpha smoothing for theta_hat
-    cnt <- array(alpha.prior, c(x$K, x$K, x$J))
-    dimnames(cnt) <- dimnames(p$theta_hat)
+    cnt <- array(alpha.prior, c(x$K, x$K, x$J), dimnames(p$theta_hat))
     # for each annotation ...
     for (n in 1:x$N) {
       # ... add alpha prior to estimated class probabilities
@@ -272,6 +257,10 @@ em_iterate <- function(x, p, max.iters, beta.prior, alpha.prior, min.relative.di
     last_log_posterior <- log_posterior
   }
 
+  # normalize
+  p$E_z <- p$E_z/rowSums(p$E_z)
+  p$pi_hat <- p$pi_hat/sum(p$pi_hat)
+
   return(p)
 }
 
@@ -287,7 +276,7 @@ em_iterate <- function(x, p, max.iters, beta.prior, alpha.prior, min.relative.di
 #'    of Dawid and Skene (1979) "Maximum Likelihood Estimation of Observer Error-Rates Using the EM Algorithm"
 #'    (see \url{https://github.com/bob-carpenter/anno/blob/master/R/em-dawid-skene.R})
 #'
-#' @param data a data frame with rows corresponding to annotator \eqn{j}'s annotation \eqn{y_{ij}} of item \eqn{i}.
+#' @param data a data frame with rows corresponding to annotator \eqn{j}'s annotation \ifelse{html}{\out{<em>y<sub>ij</sub></em>}}{\eqn{y_{ij}}} of item \eqn{i}.
 #'
 #' @param item.col (unquoted name of) column containing item identifiers
 #'
@@ -298,13 +287,13 @@ em_iterate <- function(x, p, max.iters, beta.prior, alpha.prior, min.relative.di
 #' @param max.iters positive integer, specifying the maximum number of EM iterations to perform.
 #'      (CAUTION: low values may cause stopping before convergence)
 #'      Defaults to 100.
-#' @param .prevalence.prior vector of numbers in interval (0, 1),
-#'      specifying prior probabilities on item label classes \eqn{\hat{\boldsymbol{pi}}}.
-#'      Most have length equal to number of label classes (i.e., number of unique item labels in \code{data}).
+#' @param .prevalence.prior \code{NULL} (default) or a named vector of numbers in interval (0, 1),
+#'      specifying prior probabilities on item label classes \ifelse{html}{\out{<b><em>&pi;</em></b>&circ;}}{\eqn{\hat{\boldsymbol{\pi}}}}.
+#'      Must have length equal to number of label classes (i.e., number of unique item labels in \code{data}) and sum to 1.
 #'      Defaults to \code{NULL}, in which case prior class label probabilities are set all equal to \eqn{1/K} (where \eqn{K} is the number of item label classes)
 #' @param .ability.prior number in interval (0, 1), specifying the annotator ability prior used to initialize ability parameters for first iteration
 #'      Defaults to 0.7
-#' @param .beta.prior number in interval (0, 1), specifying the beta prior used to perform smoothing on \eqn{\hat{\boldsymbol{pi}}} (label class prevalence estimates)
+#' @param .beta.prior number in interval (0, 1), specifying the beta prior used to perform smoothing on \ifelse{html}{\out{<b><em>&pi;</em></b>&circ;}}{\eqn{\hat{\boldsymbol{\pi}}}} (label class prevalence estimates)
 #'      Defaults to 0.01
 #' @param .alpha.prior number in interval (0, 1), specifying the alpha prior used to perform smoothing on items' label class probability estimates
 #'      Defaults to 0.01
@@ -313,70 +302,88 @@ em_iterate <- function(x, p, max.iters, beta.prior, alpha.prior, min.relative.di
 #'      Defaults to 1e-8
 #' @param verbose logical. print-out data description and iteration history?
 #'
-#' @return a \code{em.fit} object, which is a list with elements
-#'     \enumerate{
-#'       \item{'call': the \code{call} object associated with the model
-#'       \item{'info': a list object with elements
-#'         \enumerate{
-#'           \item 'items': a list with elements
-#'             'n' (number of items),
-#'             'mean_annotations' (average number of annotations per item),
-#'             'sd_annotations' (std. dev. of number of annotations per item), and
-#'             'median_annotations' (median number of annotations per item)
-#'           \item 'annotators': a list with elements
-#'             'n' (number of annotators),
-#'             'mean_annotations' (average number of annotations per annotator),
-#'             'sd_annotations' (std. dev. of number of annotations per annotator), and
-#'             'median_annotations' (median number of annotations per annotator)
-#'           \item 'labels': a list with elements
-#'             'n' (number of label categories/classes), and
-#'             'props' (proportions of items with label classes)
+#' @return An \code{em.fit} object, which is a list with elements
+#'     \describe{
+#'       \item{call}{the \code{call} object associated with the model}
+#'       \item{info}{A list object with elements
+#'         \describe{
+#'           \item{items}{
+#'              A list with elements
+#'              \code{n} (number of items),
+#'              \code{mean_annotations} (average number of annotations per item),
+#'              \code{sd_annotations} (std. dev. of number of annotations per item), and
+#'              \code{median_annotations} (median number of annotations per item)
+#'           }
+#'           \item{annotators}{
+#'             A list with elements
+#'             \code{n} (number of annotators),
+#'             \code{mean_annotations} (average number of annotations per annotator),
+#'             \code{sd_annotations} (std. dev. of number of annotations per annotator), and
+#'             \code{median_annotations} (median number of annotations per annotator)
+#'           }
+#'           \item{labels}{
+#'             A list with elements
+#'             \code{n} (number of label categories/classes), and
+#'             \code{props} (proportions of items with label classes)
+#'           }
 #'         }
 #'       }
-#'       \item{'est_class_probs': a \code{\link[tibble]{tibble}} with columns
+#'       \item{est_class_probs}{
+#'         A \code{\link[tibble]{tibble}} with one row for each item in \code{data} (as indexed by coloumn \code{label.col}).
+#'
+#'         The first column is named like \code{item.col} and records item identifiers.
+#'         The second to \eqn{1+K}th columns record items' label class probability estimates \ifelse{html}{\out{<em>&ycirc;<sub>ij</sub></em>}}{\eqn{\hat{y}_{ij}}} (columns are named like label classes).
+#'         The last column \code{majority_vote} recods majority-winner labels in item-level annotations (w/ random tie-breaing where necessary).
+#'       }
+#'       \item{est_class_prevl}{
+#'         A \code{\link[tibble]{tibble}} with as many rows as label classes and columns
 #'         \itemize{
-#'           \item '<item.col>' (original item identifier column name),
-#'           \item one for each label class occuring in \code{data$<label.col>}
-#'               with values holding label class posterior probability estimates \eqn{\hat{z}_{ij}},
-#'           \item[] and
-#'           \item 'majority_vote' (majority-winner label w/ random tie-breaing where required)
+#'           \item{\code{<label.col>}: the original label identifier column name}
+#'           \item{\code{est_prob}: the label class prevalence estimate}
+#'           \item{\code{prop_labels}: the proportion of items with this row's label among model-induced labelings}
+#'           \item{\code{prop_mv}: the proportion of items with this row's label among majority-winner labelings}
 #'         }
 #'       }
-#'       \item{'est_class_prevl': a \code{\link[tibble]{tibble}} with as many rows as label classes and columns
-#'         \enumerate{
-#'           \item '<label.col>' (the original label identifier column name),
-#'           \item 'est_prob' (the posterior prevalence estimate),
-#'           \item 'prop_labels' (the label proportions, where labels are induced by applying a .5 threshold to posterior label class probability estimates),
-#'           \item[] and
-#'           \item 'prop_mv' (the majority-winner label proportions)
+#'       \item{est_annotator_params}{
+#'         A \code{\link[tibble]{tibble}} with \ifelse{html}{\out{J&times;K&times;K}}{\eqn{J \times K \times K}} rows recording all \eqn{J} coders' \ifelse{html}{\out{K&times;K}}{\eqn{K \times K}} ability and error-rate estimate matrices.
+#'         Columns:
+#'         \itemize{
+#'           \item{\code{<annotator.col>}: the original annotator identifier column name},
+#'           \item{\code{<label.col>}: the "true" label class (column named like the original label identifier column)}
+#'           \item{\code{labeled}: the label assigned by annotator \eqn{j}}
+#'           \item{
+#'             \code{est_prob}:
+#'             the probability annotator \eqn{j} assigns \ifelse{html}{\out{<em>y<sub>ij</sub></em>}}{\eqn{y_{ij}}}
+#'              to item \eqn{i} with true label \ifelse{html}{\out{<em>&ytilde;<sub>i</sub></em>}}{\eqn{\tilde{y}_i}}
+#'           }
 #'         }
 #'       }
-#'       \item{'est_annotator_params': a \code{\link[tibble]{tibble}} with \eqn{J* K* K} rows and columns
-#'         \enumerate{
-#'           \item '<annotator.col>' (the original annotator identifier column name),
-#'           \item 'label' (the hypothetical 'true' label \eqn{\tilde{y}_i}),
-#'           \item 'labeled' (\eqn{y_{ij}}, the label annotator \eqn{j} assigns to item \eqn{i}),
-#'           \item[] and
-#'           \item 'est_prob' (the probability annotator \eqn{j} assigns \eqn{y_{ij}} to item \eqn{i} with true label \eqn{\tilde{y}_i})
-#'         }
-#'       }
-#'       \item{ 'iter_log': a list with as many elements as iterations until convergence.
+#'       \item{iter_log}{
+#'         A list with as many elements as iterations until convergence.
 #'         Each element is a list with elements
-#'         \enumerate{
-#'           \item 'idx' (the iteration counter, starts at 1),
-#'           \item 'log_likelihood' (the log-likelihood value of the current iteration),
-#'           \item[] and
-#'           \item 'relative_diff' (the difference in log-likelihood values of the current relative to the previous iteration)
+#'         \itemize{
+#'           \item{\code{idx}: the iteration counter, starts at 1}
+#'           \item{\code{log_likelihood}: the log-likelihood value of the current iteration}
+#'           \item{\code{relative_diff}: the difference in log-likelihood values of the current relative to the previous iteration}
 #'         }
 #'       }
 #'     }
 #' @import rlang
 #' @import dplyr
-#' @importFrom tidyr spread
-#' @importFrom tibble enframe
+#' @importFrom tidyr pivot_wider
 #' @importFrom stats runif
 #'
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' # inspect the Dawid-Skene example dataset
+#' head(dawidskene)
+#' # fit a per-annotator model using the EM algorithm
+#' fit <- em(dawidskene, item.col = patient, annotator.col = observer, label.col = diagnosis)
+#' # view summary
+#' summary(fit)
+#' }
 em <- function(
   data,
   item.col,
@@ -398,22 +405,76 @@ em <- function(
   else
     echo <- function(...) {}
 
-  # test input
-  stopifnot(is.data.frame(data))
+  # check input aguments
 
+  # `data`
+  if(!inherits(data, "data.frame"))
+    stop("`data` must be a ", sQuote("data.frame"), " object or inherit from the ", sQuote("data.frame"), " class.")
+
+  # `item.col`, `annotator.col`, and `label.col`
   args <- as.list(match.call())
-
+  req_cols <- c("item.col", "annotator.col", "label.col")
   req_colns <- c(args$item.col, args$annotator.col, args$label.col)
 
+  tmp <- rep(TRUE, 3)
+  if (
+    is.null(req_colns)
+    || any(tmp <- !req_cols %in% names(args))
+    || any(tmp <- vapply(req_colns, is.null, NA))
+  ) {
+    err_msg <- character()
+    for (c in which(tmp))
+      err_msg[length(err_msg)+1L] <- paste(req_cols[c], "cannot be NULL.")
+
+    stop(err_msg)
+  }
+
   if (!all(req_colns %in% colnames(data)))
-    stop("input to argument `data' must be a data.frame object with columns: ", paste0("'", req_colns, "'", collapse = ", "))
+    stop("`data` must be a ", sQuote("data.frame"), " object with columns: ", paste0(sQuote(req_colns), collapse = ", "))
 
   if (any((nm <- c("_item", "_annotator", "_label")) %in% colnames(data)))
-    stop("`data' cannot have reserved columns ", paste0("'", nm, "'", collapse = ", "))
+    stop("`data` cannot have reserved columns ", paste0(sQuote(nm), collapse = ", "))
+
+  # `.prevalence.prior`
+  if (!is.null(.prevalence.prior)) {
+    qlabs <- sQuote(sort(unique(data[[args$label.col]])))
+    err_msg <- sprintf("`.prevalence.prior` must be NULL (default) or a named, non-negative numeric vector with names in [%s] and values summing to 1. See `?em`.", paste(qlabs, collapse = ", "))
+    if (
+      !is.double(.prevalence.prior)
+      || any(.prevalence.prior <= 0)
+      || sum(.prevalence.prior) != 1
+      || is.null(names(.prevalence.prior))
+    ) {
+      stop(err_msg)
+    }
+
+    if (!all(w_ <- unique(data[[args$label.col]]) %in% names(.prevalence.prior))) {
+      missing_labs <- paste(qlabs[!w_], collapse = ", ")
+      err_msg <- sprintf(
+        "Element missing from `.prevalence.prior`: No value%s provided for label class%s %s. See `?em`."
+        , ifelse(sum(!w_) > 1, "s", "")
+        , ifelse(sum(!w_) > 1, "es", "")
+        , ifelse(sum(!w_) > 1, sprintf("[%s]", missing_labs), missing_labs)
+      )
+      stop(err_msg)
+    }
+
+    if (any(w_ <- !names(.prevalence.prior) %in% unique(data[[args$label.col]]))) {
+      stop(paste("`.prevalence.prior` has too many elements:", err_msg))
+    }
+  }
+
+  if (length(labs <- unique(data[[args$label.col]])) == 1) {
+    warning(
+      "There is only one label class in your data: ", sQuote(labs)
+      , ". Without variation in annotations, EM estimates will be non-sensical."
+      , call. = FALSE
+    )
+  }
 
   # Setup data:
 
-  # assign unique item, annotator and label indixes
+  # assign unique item, annotator and label indexes
   dm <- data %>%
     ungroup() %>%
     mutate(
@@ -422,14 +483,22 @@ em <- function(
       `_label` = group_indices(., !!enquo(label.col))
     )
 
+  # get a mapping of label.col values to indexes
+  label_map <- as.list(unique(dm[, c(as.character(args$label.col), "_label")]))
+  label_map <- setNames(label_map[[2]], label_map[[1]])
+
   # create item, annotator and label indexes
   dat <- create_em_indixes(dm, echo)
 
-  # Estimation:
-
   # if no prevalence prior is provided, set equal prior item label class probabilities
-  if (is.null(.prevalence.prior))
-      .prevalence.prior <- with(dat, array(1/K, K))
+  if (is.null(.prevalence.prior)){
+    .prevalence.prior <- setNames(with(dat, array(1/K, K)), unique(dat$y))
+  } else {
+    names(.prevalence.prior) <- names(label_map[names(.prevalence.prior)])
+    .prevalence.prior <- as.array(.prevalence.prior[unique(dat$y)])
+  }
+
+  # Estimation:
 
   # initialize parameters
   prms <- init_em_params(dat, .ability.prior, .prevalence.prior)
@@ -448,9 +517,9 @@ em <- function(
   # Prep output:
 
   # compute proportion of labels
-  prop_labels <- rep(0, dat$K)
-  for (k in 1:dat$K)
-    prop_labels[k] <- sum(dat$y == k) / dat$N
+  prop_labels <- prop.table(table(dat$y))
+  names(prop_labels) <- label_map[names(prop_labels)]
+  prop_labels <- as.vector(prop_labels[sort(names(prop_labels))])
 
   # compute majority votes
   majority_votes <- dm %>%
@@ -482,7 +551,7 @@ em <- function(
       , by = c("cat_label" = "_label")
     ) %>%
     select(!!enquo(item.col), !!enquo(label.col), est_prob) %>%
-    spread(2, est_prob) %>%
+    pivot_wider(names_from = as.character(args$label.col), values_from = "est_prob") %>%
     left_join(majority_votes, by = as.character(args$item.col))
 
   # label class prevalence
@@ -497,9 +566,9 @@ em <- function(
     ) %>%
     select(!!enquo(label.col), est_prob, prop_labels) %>%
     left_join(
-      prop.table(table(z_out$majority_vote)) %>%
-        enframe() %>%
-        rename(!!enquo(label.col) := name, prop_mv = value)
+      count(z_out, majority_vote) %>%
+        mutate(n = n/sum(n)) %>%
+        rename(!!enquo(label.col) := majority_vote, prop_mv = n)
       , by = as.character(args$label.col)
     )
 
@@ -544,110 +613,6 @@ em <- function(
     , class = c("em.fit", "list")
   )
 
-}
-
-# EM-fit Plots ----
-
-#' EM-fit plot: Item class probability estimate distributions
-#'
-#' @param em.fit an \code{em.fit} object es returned by \code{em}
-#'
-#' @return a \code{em.fit.plot} object inheriting from \code{\link[ggplot2]{ggplot}}
-#'
-#' @import ggplot2
-#'
-#' @export
-emplot_item_class_distributions <- function(em.fit) {
-
-  stopifnot(inherits(em.fit, "em.fit"))
-
-  temp <- em.fit$est_class_probs
-  temp[[paste0("_label_", names(temp)[2], "_")]]  <- temp[[2]] > temp[[3]]
-  temp[["_prob_"]] <- ifelse(temp[[5]], temp[[2]], temp[[3]])
-  temp[[5]] <- ifelse(temp[[5]], names(temp)[2], names(temp)[3])
-  p <- ggplot(temp, aes(x = `_prob_`)) +
-    geom_density(color = NA, fill = "black", alpha = .5) +
-    facet_grid(cols = vars(`_label_no_`)) +
-    labs(
-      title = "Distribution of posterior label class probability estimates  by posterior labels"
-      , subtitle = sprintf(
-        paste(
-          "Left panel: all items labeled '%s',"
-          , "right panel all items labeled '%s'"
-          , "based on .5 threshold"
-        )
-        , names(temp)[2], names(temp)[3]
-      )
-      , x = "Posterior class probability"
-      , y = "Density"
-    )
-
-  p <- structure(p, class = c("em.fit.plot", class(p)))
-
-  invisible(p)
-}
-#' EM-fit plot: Annotator ability estimate distributions
-#'
-#' @param em.fit an \code{em.fit} object es returned by \code{em}
-#'
-#' @return a \code{em.fit.plot} object inheriting from \code{\link[ggplot2]{ggplot}}
-#'
-#' @import ggplot2
-#' @importFrom stats as.formula
-#'
-#' @export
-emplot_annotator_ability_distributions <- function(em.fit) {
-  stopifnot(inherits(em.fit, "em.fit"))
-
-  temp <- unique(em.fit$est_annotator_params[[3]])
-
-  p <- ggplot(
-    em.fit$est_annotator_params[em.fit$est_annotator_params[[3]] == temp[1], ]
-    , aes(est_prob)
-  ) +
-    geom_histogram(bins = nrow(em.fit$est_annotator_params)/20, alpha = .5) +
-    facet_grid(as.formula(paste("~", names(em.fit$est_annotator_params)[2]))) +
-    labs(
-      title = "Distribution of posterior annotator ability parameter estimates by item class label"
-      , subtitle = "Left and right panels depict label-specific estimates (inverses of error-rates)"
-      , x = "Accuracy"
-      , y = "Count"
-    )
-
-  p <- structure(p, class = c("em.fit.plot", class(p)))
-
-  invisible(p)
-}
-
-#' EM-fit plot: estimation convergence
-#'
-#' @param em.fit an \code{em.fit} object es returned by \code{em}
-#'
-#' @return a \code{em.fit.plot} object inheriting from \code{\link[ggplot2]{ggplot}}
-#'
-#' @import ggplot2
-#'
-#' @export
-emplot_convergence <- function(em.fit) {
-  stopifnot(inherits(em.fit, "em.fit"))
-
-  p <- ggplot(
-    data.frame(
-      ll = unlist(lapply(em.fit$iterations, `[[`, "log_likelihood"))
-      , iter = 1:length(em.fit$iterations)
-    )
-   , aes(x = iter, y = ll)
-  ) +
-    geom_line() +
-    labs(
-      title = "Expectation-Maximization log-likelihood trace plot"
-      , x = "Iteration"
-      , y = "log-Likelihood"
-    )
-
-  p <- structure(p, class = c("em.fit.plot", class(p)))
-
-  invisible(p)
 }
 
 

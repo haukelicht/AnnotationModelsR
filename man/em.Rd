@@ -9,7 +9,7 @@ em(data, item.col, annotator.col, label.col, max.iters = 100,
   .alpha.prior = 0.01, .min.relative.diff = 1e-08, verbose = TRUE)
 }
 \arguments{
-\item{data}{a data frame with rows corresponding to annotator \eqn{j}'s annotation \eqn{y_{ij}} of item \eqn{i}.}
+\item{data}{a data frame with rows corresponding to annotator \eqn{j}'s annotation \ifelse{html}{\out{<em>y<sub>ij</sub></em>}}{\eqn{y_{ij}}} of item \eqn{i}.}
 
 \item{item.col}{(unquoted name of) column containing item identifiers}
 
@@ -24,12 +24,12 @@ Defaults to 100.}
 \item{.ability.prior}{number in interval (0, 1), specifying the annotator ability prior used to initialize ability parameters for first iteration
 Defaults to 0.7}
 
-\item{.prevalence.prior}{vector of numbers in interval (0, 1),
-specifying prior probabilities on item label classes \eqn{\hat{\boldsymbol{pi}}}.
-Most have length equal to number of label classes (i.e., number of unique item labels in \code{data}).
+\item{.prevalence.prior}{\code{NULL} (default) or a named vector of numbers in interval (0, 1),
+specifying prior probabilities on item label classes \ifelse{html}{\out{<b><em>&pi;</em></b>&circ;}}{\eqn{\hat{\boldsymbol{\pi}}}}.
+Must have length equal to number of label classes (i.e., number of unique item labels in \code{data}) and sum to 1.
 Defaults to \code{NULL}, in which case prior class label probabilities are set all equal to \eqn{1/K} (where \eqn{K} is the number of item label classes)}
 
-\item{.beta.prior}{number in interval (0, 1), specifying the beta prior used to perform smoothing on \eqn{\hat{\boldsymbol{pi}}} (label class prevalence estimates)
+\item{.beta.prior}{number in interval (0, 1), specifying the beta prior used to perform smoothing on \ifelse{html}{\out{<b><em>&pi;</em></b>&circ;}}{\eqn{\hat{\boldsymbol{\pi}}}} (label class prevalence estimates)
 Defaults to 0.01}
 
 \item{.alpha.prior}{number in interval (0, 1), specifying the alpha prior used to perform smoothing on items' label class probability estimates
@@ -41,6 +41,74 @@ Defaults to 1e-8}
 
 \item{verbose}{logical. print-out data description and iteration history?}
 }
+\value{
+An \code{em.fit} object, which is a list with elements
+    \describe{
+      \item{call}{the \code{call} object associated with the model}
+      \item{info}{A list object with elements
+        \describe{
+          \item{items}{
+             A list with elements
+             \code{n} (number of items),
+             \code{mean_annotations} (average number of annotations per item),
+             \code{sd_annotations} (std. dev. of number of annotations per item), and
+             \code{median_annotations} (median number of annotations per item)
+          }
+          \item{annotators}{
+            A list with elements
+            \code{n} (number of annotators),
+            \code{mean_annotations} (average number of annotations per annotator),
+            \code{sd_annotations} (std. dev. of number of annotations per annotator), and
+            \code{median_annotations} (median number of annotations per annotator)
+          }
+          \item{labels}{
+            A list with elements
+            \code{n} (number of label categories/classes), and
+            \code{props} (proportions of items with label classes)
+          }
+        }
+      }
+      \item{est_class_probs}{
+        A \code{\link[tibble]{tibble}} with one row for each item in \code{data} (as indexed by coloumn \code{label.col}).
+
+        The first column is named like \code{item.col} and records item identifiers.
+        The second to \eqn{1+K}th columns record items' label class probability estimates \ifelse{html}{\out{<em>&ycirc;<sub>ij</sub></em>}}{\eqn{\hat{y}_{ij}}} (columns are named like label classes).
+        The last column \code{majority_vote} recods majority-winner labels in item-level annotations (w/ random tie-breaing where necessary).
+      }
+      \item{est_class_prevl}{
+        A \code{\link[tibble]{tibble}} with as many rows as label classes and columns
+        \itemize{
+          \item{\code{<label.col>}: the original label identifier column name}
+          \item{\code{est_prob}: the label class prevalence estimate}
+          \item{\code{prop_labels}: the proportion of items with this row's label among model-induced labelings}
+          \item{\code{prop_mv}: the proportion of items with this row's label among majority-winner labelings}
+        }
+      }
+      \item{est_annotator_params}{
+        A \code{\link[tibble]{tibble}} with \ifelse{html}{\out{J&times;K&times;K}}{\eqn{J \times K \times K}} rows recording all \eqn{J} coders' \ifelse{html}{\out{K&times;K}}{\eqn{K \times K}} ability and error-rate estimate matrices.
+        Columns:
+        \itemize{
+          \item{\code{<annotator.col>}: the original annotator identifier column name},
+          \item{\code{<label.col>}: the "true" label class (column named like the original label identifier column)}
+          \item{\code{labeled}: the label assigned by annotator \eqn{j}}
+          \item{
+            \code{est_prob}:
+            the probability annotator \eqn{j} assigns \ifelse{html}{\out{<em>y<sub>ij</sub></em>}}{\eqn{y_{ij}}}
+             to item \eqn{i} with true label \ifelse{html}{\out{<em>&ytilde;<sub>i</sub></em>}}{\eqn{\tilde{y}_i}}
+          }
+        }
+      }
+      \item{iter_log}{
+        A list with as many elements as iterations until convergence.
+        Each element is a list with elements
+        \itemize{
+          \item{\code{idx}: the iteration counter, starts at 1}
+          \item{\code{log_likelihood}: the log-likelihood value of the current iteration}
+          \item{\code{relative_diff}: the difference in log-likelihood values of the current relative to the previous iteration}
+        }
+      }
+    }
+}
 \description{
 Function fits an Dawid-Skene annotation model to categorical annotation data
     using the Expectation Maximization algorithm.
@@ -49,4 +117,14 @@ Function fits an Dawid-Skene annotation model to categorical annotation data
 Code adapted from Bob Carpenter's implementation
    of Dawid and Skene (1979) "Maximum Likelihood Estimation of Observer Error-Rates Using the EM Algorithm"
    (see \url{https://github.com/bob-carpenter/anno/blob/master/R/em-dawid-skene.R})
+}
+\examples{
+\dontrun{
+# inspect the Dawid-Skene example dataset
+head(dawidskene)
+# fit a per-annotator model using the EM algorithm
+fit <- em(dawidskene, item.col = patient, annotator.col = observer, label.col = diagnosis)
+# view summary
+summary(fit)
+}
 }
