@@ -516,11 +516,6 @@ em <- function(
 
   # Prep output:
 
-  # compute proportion of labels
-  prop_labels <- prop.table(table(dat$y))
-  names(prop_labels) <- label_map[names(prop_labels)]
-  prop_labels <- as.vector(prop_labels[sort(names(prop_labels))])
-
   # compute majority votes
   majority_votes <- dm %>%
     group_by(`_item`, !!enquo(item.col), !!enquo(label.col)) %>%
@@ -535,6 +530,7 @@ em <- function(
     slice(which.max(tie_breaker)) %>%
     select(!!enquo(item.col), majority_vote) %>%
     ungroup()
+
 
   # item-specific label class probabilities
   z_out <- tibble(
@@ -554,11 +550,12 @@ em <- function(
     pivot_wider(names_from = as.character(args$label.col), values_from = "est_prob") %>%
     left_join(majority_votes, by = as.character(args$item.col))
 
+
   # label class prevalence
   pi_out <- tibble(
     cat_label = sort(unique(dat$y)),
     est_prob = p$pi_hat,
-    prop_labels = prop_labels
+    prop_labels = as.vector(prop.table(table(dat$y))[names(p$pi_hat)])
   ) %>%
     left_join(
       unique(select(dm, !!enquo(label.col), `_label`))
