@@ -1,7 +1,7 @@
 context("em()")
-library(AnnotationModelsR)
+library(tibble)
 
-
+# check em() arguments ----
 test_that("em() checks arguments.", {
   # test that only data.frames are accepted
   expect_error(
@@ -28,7 +28,7 @@ test_that("em() checks arguments.", {
   # test that reserved column names are protected
   expect_error(
     em(
-      data = tibble::tibble("_item" = NA, "_annotator" = NA, "_label" = NA)
+      data = tibble("_item" = NA, "_annotator" = NA, "_label" = NA)
       , item.col = "_item"
       , annotator.col = "_annotator"
       , label.col = "_label"
@@ -105,9 +105,9 @@ test_that("em() checks arguments.", {
   )
 })
 
-
+# test create_em_indixes() ----
 test_that("create_em_indixes()", {
-  td <- tibble::tibble(
+  td <- tibble(
     "_item" = rep(1:2, each = 2)
     , "_annotator" = rep(1:2, times = 2)
     , "_label" = rep(1:2, each = 2)
@@ -127,20 +127,21 @@ test_that("create_em_indixes()", {
   expect_equal(res$N, 4L)
 })
 
+# test init_em_params() ----
 test_that("init_em_params()", {
-  td <- tibble::tibble(
+  td <- tibble(
     "_item" = rep(1:3, each = 2)
     , "_annotator" = rep(1:3, times = 2)
     , "_label" = rep(1:2, each = 3)
   )
 
-  tmp <- AnnotationModelsR:::create_em_indixes(td, .echo = function(...) NULL)
+  tmp <- create_em_indixes(td, .echo = function(...) NULL)
 
   # equal inital propbabilities
   prev_prior <- array(.5, 2, list(c("1", "2")))
   abl_prior <- .5
 
-  res <- AnnotationModelsR:::init_em_params(tmp, .ability.prior = abl_prior, .prevalence.prior = prev_prior)
+  res <- init_em_params(tmp, .ability.prior = abl_prior, .prevalence.prior = prev_prior)
 
   # test output
   expect_equal(length(res), 3L)
@@ -163,7 +164,7 @@ test_that("init_em_params()", {
   prev_prior <- array(c(.8, .2), 2, list(c("1", "2")))
   abl_prior <- .8
 
-  res <- AnnotationModelsR:::init_em_params(tmp, .ability.prior = abl_prior, .prevalence.prior = prev_prior)
+  res <- init_em_params(tmp, .ability.prior = abl_prior, .prevalence.prior = prev_prior)
 
   # all on-diagonal elements of annotator ability matrixes = .ability.prior
   expect_true(all(apply(res$theta_hat, 3, diag) == abl_prior))
@@ -171,25 +172,25 @@ test_that("init_em_params()", {
   expect_true(all(apply(res$theta_hat, 3, function(x) x[upper.tri(x)]) == 1-abl_prior/(2-1)))
 })
 
-
+# test em_iterate() ----
 test_that("em_iterate()", {
 
-  td <- tibble::tibble(
+  td <- tibble(
     "_item" = rep(1:3, each = 2)
     , "_annotator" = rep(1:3, times = 2)
     , "_label" = rep(1:2, each = 3)
   )
 
-  x <- AnnotationModelsR:::create_em_indixes(td, .echo = function(...) NULL)
+  x <- create_em_indixes(td, .echo = function(...) NULL)
 
   # equal inital propbabilities
   prev_prior <- array(.5, 2, list(c("1", "2")))
   abl_prior <- .5
 
-  p <- AnnotationModelsR:::init_em_params(x, .ability.prior = abl_prior, .prevalence.prior = prev_prior)
+  p <- init_em_params(x, .ability.prior = abl_prior, .prevalence.prior = prev_prior)
 
   # first iteration
-  res <- AnnotationModelsR:::em_iterate(
+  res <- em_iterate(
     x = x
     , p = p
     , max.iters = 1
@@ -211,7 +212,7 @@ test_that("em_iterate()", {
   expect_identical(res$E_z, p$E_z)
 
   # all (2) iterations
-  res <- AnnotationModelsR:::em_iterate(
+  res <- em_iterate(
     x = x
     , p = p
     , max.iters = 10
@@ -232,10 +233,10 @@ test_that("em_iterate()", {
   prev_prior <- array(c(.8, .2), 2, list(c("1", "2")))
   abl_prior <- .8
 
-  p <- AnnotationModelsR:::init_em_params(x, .ability.prior = abl_prior, .prevalence.prior = prev_prior)
+  p <- init_em_params(x, .ability.prior = abl_prior, .prevalence.prior = prev_prior)
 
   # first iteration
-  res <- AnnotationModelsR:::em_iterate(
+  res <- em_iterate(
     x = x
     , p = p
     , max.iters = 1
@@ -258,7 +259,7 @@ test_that("em_iterate()", {
   expect_true(all(rowSums(res$E_z) == 1))
 
   # all iterations
-  res <- AnnotationModelsR:::em_iterate(
+  res <- em_iterate(
     x = x
     , p = p
     , max.iters = 10
@@ -282,18 +283,22 @@ test_that("em_iterate()", {
 
   # with DAwid-Skene pacakge dataset
   dm <- dawidskene %>%
-    mutate(
-      `_item` = group_indices(., patient) ,
-      `_annotator` = group_indices(., observer),
-      `_label` = group_indices(., diagnosis)
-    )
+    ungroup() %>%
+    group_by(patient) %>%
+    mutate(`_item` = cur_group_id()) %>%
+    group_by(observer) %>%
+    mutate(`_annotator` = cur_group_id()) %>%
+    group_by(diagnosis) %>%
+    mutate(`_label` = cur_group_id()) %>%
+    ungroup()
 
-  x <- AnnotationModelsR:::create_em_indixes(dm, .echo = function(...) NULL)
+
+  x <- create_em_indixes(dm, .echo = function(...) NULL)
   prev_prior <- as.array(prop.table(table(dm[["_label"]])))
 
-  res <- AnnotationModelsR:::em_iterate(
+  res <- em_iterate(
     x = x
-    , p = AnnotationModelsR:::init_em_params(x, .5, prev_prior)
+    , p = init_em_params(x, .5, prev_prior)
     , max.iters = 10
     , beta.prior = 0.01
     , alpha.prior = 0.01
@@ -317,7 +322,7 @@ test_that("em_iterate()", {
 })
 
 
-
+# test em() ----
 test_that("em()", {
   res <- em(
     data = dawidskene

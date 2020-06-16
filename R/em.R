@@ -477,11 +477,13 @@ em <- function(
   # assign unique item, annotator and label indexes
   dm <- data %>%
     ungroup() %>%
-    mutate(
-      `_item` = group_indices(., !!enquo(item.col)) ,
-      `_annotator` = group_indices(., !!enquo(annotator.col)),
-      `_label` = group_indices(., !!enquo(label.col))
-    )
+    group_by(!!enquo(item.col)) %>%
+    mutate(`_item` = cur_group_id()) %>%
+    group_by(!!enquo(annotator.col)) %>%
+    mutate(`_annotator` = cur_group_id()) %>%
+    group_by(!!enquo(label.col)) %>%
+    mutate(`_label` = cur_group_id()) %>%
+    ungroup()
 
   # get a mapping of label.col values to indexes
   label_map <- as.list(unique(dm[, c(as.character(args$label.col), "_label")]))
@@ -519,7 +521,7 @@ em <- function(
   # compute majority votes
   majority_votes <- dm %>%
     group_by(`_item`, !!enquo(item.col), !!enquo(label.col)) %>%
-    summarize(votes = n_distinct(!!enquo(annotator.col))) %>%
+    summarize(votes = length(unique(!!enquo(annotator.col)))) %>%
     group_by(`_item`, !!enquo(item.col), !!enquo(label.col), votes) %>%
     mutate(
       tie_breaker = runif(1),
