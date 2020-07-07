@@ -4,9 +4,19 @@
 \alias{em}
 \title{Estimate Dawid-Skene Expectation Maximization model for categorical annotation data}
 \usage{
-em(data, item.col, annotator.col, label.col, max.iters = 100,
-  .ability.prior = 0.7, .prevalence.prior = NULL, .beta.prior = 0.01,
-  .alpha.prior = 0.01, .min.relative.diff = 1e-08, verbose = TRUE)
+em(
+  data,
+  item.col,
+  annotator.col,
+  label.col,
+  max.iters = 100,
+  .ability.prior = 0.7,
+  .prevalence.prior = NULL,
+  .beta.prior = 0.01,
+  .alpha.prior = 0.01,
+  .min.relative.diff = 1e-08,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{data}{a data frame with rows corresponding to annotator \eqn{j}'s annotation \ifelse{html}{\out{<em>y<sub>ij</sub></em>}}{\eqn{y_{ij}}} of item \eqn{i}.}
@@ -82,6 +92,7 @@ An \code{em.fit} object, which is a list with elements
           \item{\code{est_prob}: the label class prevalence estimate}
           \item{\code{prop_labels}: the proportion of items with this row's label among model-induced labelings}
           \item{\code{prop_mv}: the proportion of items with this row's label among majority-winner labelings}
+          \item{\code{prop_annotations}: the proportion of items with this row's label in \code{data}}
         }
       }
       \item{est_annotator_params}{

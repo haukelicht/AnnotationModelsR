@@ -7,8 +7,7 @@
 \usage{
 create_em_indixes(x, .echo)
 
-em_iterate(x, p, max.iters, beta.prior, alpha.prior, min.relative.diff,
-  .echo)
+em_iterate(x, p, max.iters, beta.prior, alpha.prior, min.relative.diff, .echo)
 }
 \arguments{
 \item{x}{a \code{data.frame} with columns '_item', '_annotator' and '_label'

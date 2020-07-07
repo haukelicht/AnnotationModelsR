@@ -4,7 +4,8 @@
 \name{dawidskene}
 \alias{dawidskene}
 \title{Example data from Dawid and Skene (1979)}
-\format{A data frame with 315 rows recoding diagnosis and 3 variables:
+\format{
+A data frame with 315 rows recoding diagnosis and 3 variables:
 \describe{
   \item{patient}{integer-valued patient ID (\eqn{i = 1,\ \ldots ,\ I}{i = 1, ..., I}, where \eqn{I = 45})}
   \item{observer}{integer-valued observer ID (\eqn{j = 1,\ \ldots ,\ J}{j = 1, ..., J}, where \eqn{J = 5})}
@@ -12,7 +13,8 @@
     integer-valued diagnosis code in \eqn{{1, 2, 3, 4}}.
     Entries record observer \eqn{j}'s diagnosis of patient \eqn{i}, \ifelse{html}{\out{<em>y<sub>ij</sub></em>}}{\eqn{y_{ij}}}.
   }
-}}
+}
+}
 \source{
 Dawid, A. P., and A. M. Skene. 1979. "Maximum likelihood estimation of observer error-rates using the EM algorithm." \emph{Applied Statistics}, 28(1), pp. 20-28.
 }

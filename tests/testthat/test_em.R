@@ -324,6 +324,7 @@ test_that("em_iterate()", {
 
 # test em() ----
 test_that("em()", {
+
   res <- em(
     data = dawidskene
     , item.col = patient
@@ -354,14 +355,21 @@ test_that("em()", {
   expect_true(all(dawidskene$patient %in% res$est_class_probs$patient))
 
   # one column for every label class
-  expect_identical(names(res$est_class_probs)[-c(1, ncol(res$est_class_probs))], names(table(dawidskene$diagnosis)))
+  nms <- names(res$est_class_probs)
+  tmp <- which(nms %in% c("majority_vote", "labeling") )
+  expect_identical(nms[-c(1, tmp)], names(table(dawidskene$diagnosis)))
   # label class estimates sum to ~1
-  expect_true(all(rowSums(res$est_class_probs[, -c(1, ncol(res$est_class_probs))]) == 1))
+  expect_true(all(rowSums(res$est_class_probs[, -c(1, tmp)]) == 1))
 
   # majority vote labelings exist
-  expect_identical(names(res$est_class_probs)[ncol(res$est_class_probs)], "majority_vote")
+  expect_true("majority_vote" %in% nms)
   # majority vote labelings in input data label classes
   expect_true(all(res$est_class_probs$majority_vote %in% unique(dawidskene$diagnosis)))
+
+  # model-based labelings exist
+  expect_true("labeling" %in% nms)
+  # majority vote labelings in input data label classes
+  expect_true(all(res$est_class_probs$labeling %in% unique(dawidskene$diagnosis)))
 
   # --- class prevalence estimates --- #
   # is data frame
@@ -371,7 +379,7 @@ test_that("em()", {
   # one estimate per label class
   expect_equal(nrow(res$est_class_prevl), length(unique(dawidskene$diagnosis)))
   # all estimates/proportions sum to 1
-  expect_identical(vapply(res$est_class_prevl[,-1], typeof, NA_character_, USE.NAMES = FALSE), rep("double", 3))
+  expect_identical(vapply(res$est_class_prevl[,-1], typeof, NA_character_, USE.NAMES = FALSE), rep("double", 4))
   expect_true(all(colSums(res$est_class_prevl[,-1]) == 1))
 
   # --- annotator ability estimates --- #

@@ -342,6 +342,7 @@ em_iterate <- function(x, p, max.iters, beta.prior, alpha.prior, min.relative.di
 #'           \item{\code{est_prob}: the label class prevalence estimate}
 #'           \item{\code{prop_labels}: the proportion of items with this row's label among model-induced labelings}
 #'           \item{\code{prop_mv}: the proportion of items with this row's label among majority-winner labelings}
+#'           \item{\code{prop_annotations}: the proportion of items with this row's label in \code{data}}
 #'         }
 #'       }
 #'       \item{est_annotator_params}{
@@ -552,18 +553,21 @@ em <- function(
     pivot_wider(names_from = as.character(args$label.col), values_from = "est_prob") %>%
     left_join(majority_votes, by = as.character(args$item.col))
 
-
+  k <- ncol(z_out)
+  cats <- names(z_out)[-c(1, k)]
+  z_out$labeling <- cats[apply(z_out[-c(1, k)], 1, which.max)]
+  label_props <- mutate(count(z_out, labeling), prop_labels = n/sum(n))
+  names(label_props)[1] <- as.character(args$label.col)
   # label class prevalence
   pi_out <- tibble(
     cat_label = sort(unique(dat$y)),
-    est_prob = p$pi_hat,
-    prop_labels = as.vector(prop.table(table(dat$y))[names(p$pi_hat)])
+    est_prob = as.vector(p$pi_hat),
+    prop_annotations = as.vector(prop.table(table(dat$y))[names(p$pi_hat)])
   ) %>%
     left_join(
       unique(select(dm, !!enquo(label.col), `_label`))
       , by = c("cat_label" = "_label")
     ) %>%
-    select(!!enquo(label.col), est_prob, prop_labels) %>%
     left_join(
       count(z_out, majority_vote) %>%
         mutate(n = n/sum(n)) %>%
@@ -571,7 +575,12 @@ em <- function(
       , by = as.character(args$label.col)
     )
 
-  # annotator ability estimats
+  class(label_props[[1]]) <- class(pi_out[[as.character(args$label.col)]])
+
+  pi_out <- left_join(pi_out, label_props[-2], by = as.character(args$label.col))
+  pi_out <- select(pi_out, !!as.character(args$label.col), est_prob, prop_labels, prop_mv, prop_annotations)
+
+  # annotator ability estimates
   theta_out <- tibble(
     this_annotator = with(dat, rep(1:J, each=K*K)),
     cat_label = with(dat, rep(rep(1:K, times=K), times=J)),
@@ -604,7 +613,7 @@ em <- function(
       est_class_probs = z_out,
       # class prevalence estimates
       est_class_prevl = pi_out,
-      # annotator ablity parameter estimates (accuracies and erro rates)
+      # annotator ability parameter estimates (accuracies and erro rates)
       est_annotator_params = theta_out,
       # iteration history
       iterations = p$iter_log
