@@ -425,16 +425,17 @@ em <- function(
   ) {
     err_msg <- character()
     for (c in which(tmp))
-      err_msg[length(err_msg)+1L] <- paste(req_cols[c], "cannot be NULL.")
+      err_msg[length(err_msg)+1L] <- paste("  ", req_cols[c], "cannot be NULL.")
 
-    stop(err_msg)
+    stop(paste(err_msg, collapse = "\n"))
   }
-
-  if (!all(req_colns %in% colnames(data)))
-    stop("`data` must be a ", sQuote("data.frame"), " object with columns: ", paste0(sQuote(req_colns), collapse = ", "))
 
   if (any((nm <- c("_item", "_annotator", "_label")) %in% colnames(data)))
     stop("`data` cannot have reserved columns ", paste0(sQuote(nm), collapse = ", "))
+  
+  if (!all(req_colns %in% colnames(data)))
+    stop("`data` must be a ", sQuote("data.frame"), " object with columns: ", paste0(sQuote(req_colns), collapse = ", "))
+
 
   # `.prevalence.prior`
   if (!is.null(.prevalence.prior)) {
@@ -443,7 +444,7 @@ em <- function(
     if (
       !is.double(.prevalence.prior)
       || any(.prevalence.prior <= 0)
-      || sum(.prevalence.prior) != 1
+      || !isTRUE(all.equal(sum(.prevalence.prior), 1))
       || is.null(names(.prevalence.prior))
     ) {
       stop(err_msg)

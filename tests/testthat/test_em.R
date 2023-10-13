@@ -1,9 +1,11 @@
 context("em()")
-library(tibble)
+library(dplyr)
+library(testthat)
 
 # check em() arguments ----
 test_that("em() checks arguments.", {
-  # test that only data.frames are accepted
+  
+  # test that only tibbles are accepted
   expect_error(
     em(
       data = matrix()
@@ -17,7 +19,7 @@ test_that("em() checks arguments.", {
   # test that *.col are columns of `data`
   expect_error(
     em(
-      data = data.frame()
+      data = tibble()
       , item.col = NULL
       , annotator.col = NULL
       , label.col = NULL
@@ -48,6 +50,7 @@ test_that("em() checks arguments.", {
     )
     , "must be NULL \\(default\\) or a named, non-negative numeric vector"
   )
+  
   expect_error(
     em(
       data = dawidskene
@@ -59,6 +62,7 @@ test_that("em() checks arguments.", {
     )
     , "must be NULL \\(default\\) or a named, non-negative numeric vector"
   )
+  
   expect_error(
     em(
       data = dawidskene
@@ -70,6 +74,7 @@ test_that("em() checks arguments.", {
     )
     , "must be NULL \\(default\\) or a named, non-negative numeric vector"
   )
+  
   expect_error(
     em(
       data = dawidskene
@@ -81,6 +86,7 @@ test_that("em() checks arguments.", {
     )
     , "must be NULL \\(default\\) or a named, non-negative numeric vector"
   )
+  
   expect_error(
     em(
       data = dawidskene
@@ -92,6 +98,7 @@ test_that("em() checks arguments.", {
     )
     , "Element missing from `\\.prevalence\\.prior`:"
   )
+  
   expect_error(
     em(
       data = dawidskene
@@ -103,6 +110,7 @@ test_that("em() checks arguments.", {
     )
     , "`\\.prevalence\\.prior` has too many elements:"
   )
+  
 })
 
 # test create_em_indixes() ----
@@ -181,16 +189,16 @@ test_that("em_iterate()", {
     , "_label" = rep(1:2, each = 3)
   )
 
-  x <- create_em_indixes(td, .echo = function(...) NULL)
+  x <- AnnotationModelsR:::create_em_indixes(td, .echo = function(...) NULL)
 
   # equal inital propbabilities
   prev_prior <- array(.5, 2, list(c("1", "2")))
   abl_prior <- .5
 
-  p <- init_em_params(x, .ability.prior = abl_prior, .prevalence.prior = prev_prior)
+  p <- AnnotationModelsR:::init_em_params(x, .ability.prior = abl_prior, .prevalence.prior = prev_prior)
 
   # first iteration
-  res <- em_iterate(
+  res <- AnnotationModelsR:::em_iterate(
     x = x
     , p = p
     , max.iters = 1
@@ -212,7 +220,7 @@ test_that("em_iterate()", {
   expect_identical(res$E_z, p$E_z)
 
   # all (2) iterations
-  res <- em_iterate(
+  res <- AnnotationModelsR:::em_iterate(
     x = x
     , p = p
     , max.iters = 10
@@ -233,10 +241,10 @@ test_that("em_iterate()", {
   prev_prior <- array(c(.8, .2), 2, list(c("1", "2")))
   abl_prior <- .8
 
-  p <- init_em_params(x, .ability.prior = abl_prior, .prevalence.prior = prev_prior)
+  p <- AnnotationModelsR:::init_em_params(x, .ability.prior = abl_prior, .prevalence.prior = prev_prior)
 
   # first iteration
-  res <- em_iterate(
+  res <- AnnotationModelsR:::em_iterate(
     x = x
     , p = p
     , max.iters = 1
@@ -259,7 +267,7 @@ test_that("em_iterate()", {
   expect_true(all(rowSums(res$E_z) == 1))
 
   # all iterations
-  res <- em_iterate(
+  res <- AnnotationModelsR:::em_iterate(
     x = x
     , p = p
     , max.iters = 10
@@ -281,7 +289,7 @@ test_that("em_iterate()", {
   expect_true(all(apply(res$E_z, 1, which.max) == c(1, 1, 2)))
   expect_true(all(rowSums(res$E_z) == 1))
 
-  # with DAwid-Skene pacakge dataset
+  # with Dawid-Skene packge dataset
   dm <- dawidskene %>%
     ungroup() %>%
     group_by(patient) %>%
@@ -293,12 +301,12 @@ test_that("em_iterate()", {
     ungroup()
 
 
-  x <- create_em_indixes(dm, .echo = function(...) NULL)
+  x <- AnnotationModelsR:::create_em_indixes(dm, .echo = function(...) NULL)
   prev_prior <- as.array(prop.table(table(dm[["_label"]])))
 
-  res <- em_iterate(
+  res <- AnnotationModelsR:::em_iterate(
     x = x
-    , p = init_em_params(x, .5, prev_prior)
+    , p = AnnotationModelsR:::init_em_params(x, .5, prev_prior)
     , max.iters = 10
     , beta.prior = 0.01
     , alpha.prior = 0.01
@@ -310,7 +318,7 @@ test_that("em_iterate()", {
   expect_true(res$iter_log[[n_iters]]$relative_diff < .0001)
 
   # summing by rows over annotator ability matrix, and then by matrix
-  expect_true(all(rowSums(res$theta_hat) == x$J))
+  expect_true(isTRUE(all.equal(unname(rowSums(res$theta_hat)), rep(x$J, x$K))))
   expect_true(all(diag(res$theta_hat[,,1]) > 0.5))
   expect_true(all(apply(res$theta_hat, 3, diag)[1, ] > .5))
 
@@ -318,7 +326,7 @@ test_that("em_iterate()", {
   expect_true(which.max(res$pi_hat) == 2L)
   # item label class estimates
   expect_true(all(1:4 %in% apply(res$E_z, 1, which.max)))
-  expect_true(all(rowSums(res$E_z) == 1))
+  expect_true(isTRUE(all.equal(unname(rowSums(res$E_z)), rep(1, x$I))))
 })
 
 
@@ -359,7 +367,7 @@ test_that("em()", {
   tmp <- which(nms %in% c("majority_vote", "labeling") )
   expect_identical(nms[-c(1, tmp)], names(table(dawidskene$diagnosis)))
   # label class estimates sum to ~1
-  expect_true(all(rowSums(res$est_class_probs[, -c(1, tmp)]) == 1))
+  expect_true(isTRUE(all.equal(rowSums(res$est_class_probs[, -c(1, tmp)]), rep(1, nrow(res$est_class_probs)))))
 
   # majority vote labelings exist
   expect_true("majority_vote" %in% nms)
@@ -398,7 +406,7 @@ test_that("em()", {
 
   # verbosity
   expect_message(
-    em(
+    fit <- em(
       data = dawidskene
       , item.col = patient
       , annotator.col = observer
